@@ -713,54 +713,64 @@ def atender_os(os_id):
     pendencias = request.form.get('pendencias', '')
     status = request.form.get('status', 'Pendente')
 
-    foto = request.files.get('foto')
     foto_nome = None
+    if 'foto' in request.files:
+        foto = request.files['foto']
+        if foto and foto.filename != '':
+            ext = foto.filename.rsplit('.', 1)[-1]
+            foto_nome = f"os_{os_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+            foto.save(os.path.join(app.config['UPLOAD_FOLDER'], foto_nome))
 
     conn = sqlite3.connect('banco_os.db')
     cursor = conn.cursor()
 
-    cursor.execute("SELECT foto_nome, data_inicio FROM ordens_servico WHERE id = ?", (os_id,))
-    row = cursor.fetchone()
-    foto_nome_atual = row[0] if row else None
-    data_inicio_str = row[1] if row else None
-
-    if foto and foto.filename != '':
-        extensao = os.path.splitext(foto.filename)[1]
-        foto_nome = f"os_{os_id}_{int(datetime.now().timestamp())}{extensao}"
-        foto.save(os.path.join(app.config['UPLOAD_FOLDER'], foto_nome))
-    else:
-        foto_nome = foto_nome_atual
-
-    data_fim_str = None
-    duracao_minutos = None
-
     if status == 'Concluído':
-        data_fim_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        if data_inicio_str:
+        cursor.execute("SELECT data_inicio FROM ordens_servico WHERE id = ?", (os_id,))
+        res = cursor.fetchone()
+        duracao = None
+        data_fim = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        if res and res[0]:
             try:
-                inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d %H:%M:%S')
-                fim = datetime.now()
-                duracao_minutos = int((fim - inicio).total_seconds() / 60)
+                dt_inicio = datetime.strptime(res[0], '%Y-%m-%d %H:%M:%S')
+                duracao = int((datetime.now() - dt_inicio).total_seconds() / 60)
             except Exception:
-                duracao_minutos = 0
+                pass
 
-    cursor.execute('''
-        UPDATE ordens_servico 
-        SET potencia_cto = ?, potencia_cliente = ?, fusoes_detalhes = ?, tipo_fusoes = ?, 
-            cor_tubo_fibra = ?, origem_destino_rota = ?, pendencias = ?, status = ?, 
-            foto_nome = ?, data_fim = ?, duracao_minutos = ?
-        WHERE id = ?
-    ''', (potencia_cto, potencia_cliente, fusoes_detalhes, tipo_fusoes, cor_tubo_fibra, 
-          origem_destino_rota, pendencias, status, foto_nome, data_fim_str, duracao_minutos, os_id))
+        if foto_nome:
+            cursor.execute('''
+                UPDATE ordens_servico
+                SET potencia_cto=?, potencia_cliente=?, fusoes_detalhes=?, tipo_fusoes=?, cor_tubo_fibra=?, origem_destino_rota=?, pendencias=?, status=?, foto_nome=?, data_fim=?, duracao_minutos=?
+                WHERE id=?
+            ''', (potencia_cto, potencia_cliente, fusoes_detalhes, tipo_fusoes, cor_tubo_fibra, origem_destino_rota, pendencias, status, foto_nome, data_fim, duracao, os_id))
+        else:
+            cursor.execute('''
+                UPDATE ordens_servico
+                SET potencia_cto=?, potencia_cliente=?, fusoes_detalhes=?, tipo_fusoes=?, cor_tubo_fibra=?, origem_destino_rota=?, pendencias=?, status=?, data_fim=?, duracao_minutos=?
+                WHERE id=?
+            ''', (potencia_cto, potencia_cliente, fusoes_detalhes, tipo_fusoes, cor_tubo_fibra, origem_destino_rota, pendencias, status, data_fim, duracao, os_id))
+    else:
+        if foto_nome:
+            cursor.execute('''
+                UPDATE ordens_servico
+                SET potencia_cto=?, potencia_cliente=?, fusoes_detalhes=?, tipo_fusoes=?, cor_tubo_fibra=?, origem_destino_rota=?, pendencias=?, status=?, foto_nome=?
+                WHERE id=?
+            ''', (potencia_cto, potencia_cliente, fusoes_detalhes, tipo_fusoes, cor_tubo_fibra, origem_destino_rota, pendencias, status, foto_nome, os_id))
+        else:
+            cursor.execute('''
+                UPDATE ordens_servico
+                SET potencia_cto=?, potencia_cliente=?, fusoes_detalhes=?, tipo_fusoes=?, cor_tubo_fibra=?, origem_destino_rota=?, pendencias=?, status=?
+                WHERE id=?
+            ''', (potencia_cto, potencia_cliente, fusoes_detalhes, tipo_fusoes, cor_tubo_fibra, origem_destino_rota, pendencias, status, os_id))
 
     conn.commit()
     conn.close()
-
     return redirect(url_for('index'))
 
 @app.route('/uploads/<filename>')
+@login_required
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
