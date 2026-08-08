@@ -175,6 +175,7 @@ HTML_ADMIN = '''
         label { font-weight: bold; display: block; margin-top: 10px; color: #4a5568; }
         input, select, textarea { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #cbd5e0; border-radius: 5px; box-sizing: border-box; }
         button { background: #38a169; color: white; padding: 12px; border: none; border-radius: 5px; font-size: 16px; margin-top: 15px; cursor: pointer; width: 100%; font-weight: bold; }
+        .btn-blue { background: #2b6cb0; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 13px; }
         th { background: #edf2f7; color: #2d3748; }
@@ -186,6 +187,8 @@ HTML_ADMIN = '''
         .btn-gps { color: #2b6cb0; font-weight: bold; text-decoration: none; display: inline-block; margin-top: 4px; }
         .box-fibra { background: #edf2f7; padding: 6px; border-radius: 4px; margin-top: 5px; font-size: 12px; border-left: 3px solid #3182ce; }
         summary { cursor: pointer; font-weight: bold; color: #2b6cb0; padding: 5px 0; }
+        .msg-sucesso { background: #c6f6d5; color: #22543d; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-weight: bold; }
+        .msg-erro { background: #fed7d7; color: #742a2a; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -196,6 +199,36 @@ HTML_ADMIN = '''
             <a href="/logout" class="btn-logout">Sair</a>
         </div>
     </div>
+
+    {% if msg %}
+        <div class="msg-sucesso">{{ msg }}</div>
+    {% endif %}
+    {% if erro_user %}
+        <div class="msg-erro">{{ erro_user }}</div>
+    {% endif %}
+
+    <details class="card">
+        <summary>👤 Cadastrar Novo Funcionário / Usuário do Sistema</summary>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
+        <form action="/cadastrar_usuario" method="POST">
+            <label>Nome Completo do Colaborador:</label>
+            <input type="text" name="nome" required placeholder="Ex: João Silva">
+            
+            <label>Usuário de Login (sem espaços):</label>
+            <input type="text" name="username" required placeholder="Ex: joaosilva">
+            
+            <label>Senha de Acesso:</label>
+            <input type="password" name="senha" required placeholder="Crie uma senha">
+            
+            <label>Nível de Permissão:</label>
+            <select name="tipo" required>
+                <option value="tecnico">Técnico de Rua (Atende O.S.)</option>
+                <option value="admin">Administrador / Gestão (Acesso Total)</option>
+            </select>
+            
+            <button type="submit" class="btn-blue">➕ Cadastrar Usuário</button>
+        </form>
+    </details>
 
     <div class="card">
         <h3>📊 Gráfico de Desempenho Diário dos Técnicos</h3>
@@ -571,6 +604,9 @@ def index():
     conn = sqlite3.connect('banco_os.db')
     cursor = conn.cursor()
 
+    msg = request.args.get('msg')
+    erro_user = request.args.get('erro_user')
+
     if session['tipo'] == 'admin':
         cursor.execute("SELECT * FROM usuarios WHERE tipo = 'tecnico'")
         tecnicos = cursor.fetchall()
@@ -621,7 +657,9 @@ def index():
             logs=logs,
             chart_labels=json.dumps(labels),
             chart_concluidos=json.dumps(concluidos),
-            chart_pendentes=json.dumps(pendentes)
+            chart_pendentes=json.dumps(pendentes),
+            msg=msg,
+            erro_user=erro_user
         )
     else:
         tec_id = session['user_id']
@@ -676,6 +714,32 @@ def index():
             total_pendentes=total_pendentes,
             mensagem_feedback=mensagem_feedback
         )
+
+@app.route('/cadastrar_usuario', methods=['POST'])
+@login_required
+def cadastrar_usuario():
+    if session['tipo'] != 'admin':
+        return redirect(url_for('index'))
+
+    nome = request.form['nome']
+    username = request.form['username'].strip().lower()
+    senha = request.form['senha']
+    tipo = request.form['tipo']
+
+    conn = sqlite3.connect('banco_os.db')
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('''
+            INSERT INTO usuarios (username, senha, nome, tipo)
+            VALUES (?, ?, ?, ?)
+        ''', (username, senha, nome, tipo))
+        conn.commit()
+        conn.close()
+        return redirect(url_for('index', msg=f"Usuário '{nome}' cadastrado com sucesso!"))
+    except sqlite3.IntegrityError:
+        conn.close()
+        return redirect(url_for('index', erro_user=f"O nome de usuário '{username}' já existe! Escolha outro."))
 
 @app.route('/criar_os', methods=['POST'])
 @login_required
